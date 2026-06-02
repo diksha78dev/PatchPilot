@@ -35,8 +35,10 @@ def test_scan_url_not_found(mock_async_client):
 
 @patch("app.main.httpx.AsyncClient")
 def test_scan_url_timeout(mock_async_client):
-    mock_client = mock_async_client.return_value.__aenter__.return_value
-    mock_client.head.side_effect = httpx.TimeoutException("timeout")
+    mock_client = AsyncMock()
+    mock_async_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_async_client.return_value.__aexit__ = AsyncMock(return_value=None)
+    mock_client.head = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
 
     res = client.post(
         "/scan-url",
@@ -54,10 +56,11 @@ def test_scan_url_timeout(mock_async_client):
 @patch("app.main.unzip_to_dir")
 @patch("app.main._scan_repo_dir")
 def test_scan_url_success(mock_scan, mock_unzip, mock_download, mock_async_client):
-    mock_client = mock_async_client.return_value.__aenter__.return_value
-    mock_response = AsyncMock()
-    mock_response.status_code = 200
-    mock_client.head.return_value = mock_response
+    mock_client = AsyncMock()
+    mock_async_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_async_client.return_value.__aexit__ = AsyncMock(return_value=None)
+    mock_response = httpx.Response(200)
+    mock_client.head = AsyncMock(return_value=mock_response)
 
     mock_scan.return_value = ([], [], [], [])
 
