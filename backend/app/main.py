@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import random
 import asyncio
 import json
 import logging
 import os
+import random
 import re
 import shutil
 import tempfile
@@ -206,7 +206,7 @@ async def download_to_path(url: str, dest_path: Path, max_retries: int = 5) -> N
                     if parsed.host not in ALLOWED_REDIRECT_HOSTS:
                         raise HTTPException(
                             status_code=400,
-                            detail=f"Redirect to disallowed host '{parsed.host}' was blocked."
+                            detail=f"Redirect to disallowed host '{parsed.host}' was blocked.",
                         )
 
                     r = await client.get(current_url)
@@ -215,41 +215,56 @@ async def download_to_path(url: str, dest_path: Path, max_retries: int = 5) -> N
                     if r.status_code in (301, 302, 303, 307, 308):
                         location = r.headers.get("location")
                         if not location:
-                            raise HTTPException(status_code=400, detail="Redirect missing Location header.")
+                            raise HTTPException(
+                                status_code=400,
+                                detail="Redirect missing Location header.",
+                            )
                         current_url = str(location)
                         continue
 
                     # Handle Rate Limits (Break inner loop to trigger outer retry logic)
                     if r.status_code in (403, 429):
-                        break 
+                        break
 
                     # Handle Hard Errors
                     if r.status_code != 200:
-                        raise HTTPException(status_code=400, detail=f"Failed to download repo ZIP ({r.status_code}).")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Failed to download repo ZIP ({r.status_code}).",
+                        )
 
                     # Success
                     dest_path.write_bytes(r.content)
-                    return 
+                    return
 
                 # If we broke out of the redirect loop due to a rate limit:
                 if r.status_code in (403, 429):
                     if attempt == max_retries - 1:
-                        raise HTTPException(status_code=429, detail="GitHub API rate limit exceeded after retries.")
-                    
+                        raise HTTPException(
+                            status_code=429,
+                            detail="GitHub API rate limit exceeded after retries.",
+                        )
+
                     jitter = random.uniform(0.5, 1.5)
-                    sleep_time = (base_delay * (2 ** attempt)) + jitter
-                    logger.warning(f"Rate limited (status {r.status_code}) on {url}. Retrying in {sleep_time:.2f}s...")
+                    sleep_time = (base_delay * (2**attempt)) + jitter
+                    logger.warning(
+                        f"Rate limited (status {r.status_code}) on {url}. Retrying in {sleep_time:.2f}s..."
+                    )
                     await asyncio.sleep(sleep_time)
                     continue
 
-                raise HTTPException(status_code=400, detail=f"Too many redirects (max {MAX_REDIRECTS}).")
-                
+                raise HTTPException(
+                    status_code=400, detail=f"Too many redirects (max {MAX_REDIRECTS})."
+                )
+
             except httpx.RequestError as e:
                 # Network level failures (timeouts, connection dropped)
                 if attempt == max_retries - 1:
-                    raise HTTPException(status_code=400, detail=f"Network error downloading repo: {e}")
+                    raise HTTPException(
+                        status_code=400, detail=f"Network error downloading repo: {e}"
+                    )
                 jitter = random.uniform(0.5, 1.5)
-                await asyncio.sleep((base_delay * (2 ** attempt)) + jitter)
+                await asyncio.sleep((base_delay * (2**attempt)) + jitter)
 
 
 def _maybe_use_single_top_folder(repo_dir: Path) -> Path:
@@ -1096,12 +1111,13 @@ async def stream_org_status(org_job_id: str):
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
+
 @app.get("/api/scans/org/{org_job_id}/summary")
 async def get_org_summary(org_job_id: str):
     db = await get_db()
     try:
         db.row_factory = aiosqlite.Row
-        
+
         # 1. Get total, completed, and failed repos
         cur = await db.execute(
             """
@@ -1111,7 +1127,8 @@ async def get_org_summary(org_job_id: str):
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
             FROM jobs 
             WHERE org_job_id = ?
-            """, (org_job_id,)
+            """,
+            (org_job_id,),
         )
         repo_stats = await cur.fetchone()
 
@@ -1123,7 +1140,8 @@ async def get_org_summary(org_job_id: str):
             JOIN jobs j ON f.job_id = j.job_id
             WHERE j.org_job_id = ?
             GROUP BY f.severity
-            """, (org_job_id,)
+            """,
+            (org_job_id,),
         )
         severity_rows = await cur.fetchall()
         severities = {r["severity"].lower(): r["count"] for r in severity_rows}
@@ -1138,16 +1156,20 @@ async def get_org_summary(org_job_id: str):
             GROUP BY j.project_name
             ORDER BY count DESC
             LIMIT 5
-            """, (org_job_id,)
+            """,
+            (org_job_id,),
         )
-        top_vulnerable = [{"repo_name": r["repo_name"], "count": r["count"]} for r in await cur.fetchall()]
+        top_vulnerable = [
+            {"repo_name": r["repo_name"], "count": r["count"]}
+            for r in await cur.fetchall()
+        ]
 
         return {
             "total_repositories": repo_stats["total"] or 0,
             "completed_repositories": repo_stats["completed"] or 0,
             "failed_repositories": repo_stats["failed"] or 0,
             "severity_distribution": severities,
-            "top_vulnerable_repositories": top_vulnerable
+            "top_vulnerable_repositories": top_vulnerable,
         }
     finally:
         await db.close()
@@ -1180,7 +1202,8 @@ async def get_org_findings(org_job_id: str):
                     WHEN 'LOW' THEN 4 
                     ELSE 5 
                 END
-            """, (org_job_id,)
+            """,
+            (org_job_id,),
         )
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
