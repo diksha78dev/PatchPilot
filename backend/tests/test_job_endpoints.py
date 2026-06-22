@@ -152,7 +152,15 @@ class TestGetFindings:
         f = res.json()["findings"][0]
         assert all(
             k in f
-            for k in ("id", "rule_id", "severity", "category", "scanner", "message", "ml_score")
+            for k in (
+                "id",
+                "rule_id",
+                "severity",
+                "category",
+                "scanner",
+                "message",
+                "ml_score",
+            )
         )
 
 
