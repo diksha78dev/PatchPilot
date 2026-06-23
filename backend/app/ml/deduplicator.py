@@ -1,80 +1,69 @@
-from typing import Any, List
+from collections import defaultdict
+
+from sklearn.cluster import DBSCAN
+
+
+def get_model():
+    return None
+
 
 try:
-    from sentence_transformers import SentenceTransformer
+    from app.ml.embedder import embed_findings
 
     SENTENCE_TRANSFORMERS_AVAILABLE = True
 except Exception:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
 
-_MODEL = None
-
-
-def get_model():
-    global _MODEL
-    if not SENTENCE_TRANSFORMERS_AVAILABLE:
-        return None
-    if _MODEL is None:
-        # Load the lightweight MiniLM model for embeddings
-        _MODEL = SentenceTransformer("all-MiniLM-L6-v2")
-    return _MODEL
-
-
-def deduplicate(findings: List[Any], epsilon: float = 0.15) -> List[Any]:
-    """
-    Deduplicates a list of findings (can be Finding objects or dicts)
-    using sentence embeddings cosine similarity.
-    If sentence-transformers is not available, returns the original list.
-    """
-    if not SENTENCE_TRANSFORMERS_AVAILABLE or not findings:
-        return findings
-
-    model = get_model()
-    if model is None:
-        return findings
-
-    texts = []
-    for f in findings:
-        if isinstance(f, dict):
-            desc = f.get("description") or ""
-            title = f.get("title") or ""
-        else:
-            desc = getattr(f, "description", "") or ""
-            title = getattr(f, "title", "") or ""
-
-        desc_str = str(desc).strip()
-        title_str = str(title).strip()
-        text = desc_str if desc_str else title_str
-        texts.append(text)
-
-    try:
-        import numpy as np
-
-        embeddings = model.encode(texts, convert_to_numpy=True)
-    except Exception as e:
-        # If encoding fails (e.g. system issues or package issues), fallback gracefully
-        import logging
-
-        logging.getLogger(__name__).warning(
-            f"Embedding encoding failed for deduplication: {e}"
+    def embed_findings(findings):
+        raise RuntimeError(
+            "sentence-transformers is not installed. "
+            "Install it using: pip install sentence-transformers"
         )
+
+
+def deduplicate(
+    findings: list[dict],
+    epsilon: float = 0.15,
+) -> list[dict]:
+    """
+    Group similar findings using DBSCAN and return
+    representative findings with duplicate metadata.
+    """
+    if not findings:
+        return []
+
+    if not SENTENCE_TRANSFORMERS_AVAILABLE:
         return findings
 
-    # Normalize embeddings to unit vectors for easy cosine similarity computation
-    norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    normalized = embeddings / norms
+    embeddings = embed_findings(findings)
 
-    keep_indices = []
-    for i in range(len(findings)):
-        is_dup = False
-        for j in keep_indices:
-            sim = float(np.dot(normalized[i], normalized[j]))
-            dist = 1.0 - sim
-            if dist <= epsilon:
-                is_dup = True
-                break
-        if not is_dup:
-            keep_indices.append(i)
+    clustering = DBSCAN(
+        eps=epsilon,
+        min_samples=2,
+        metric="cosine",
+    )
 
-    return [findings[idx] for idx in keep_indices]
+    labels = clustering.fit_predict(embeddings)
+
+    results = []
+    clusters = defaultdict(list)
+
+    for idx, label in enumerate(labels):
+        clusters[label].append(findings[idx])
+
+    for label, cluster_findings in clusters.items():
+        if label == -1:
+            for finding in cluster_findings:
+                # finding["duplicate_count"] = 0
+                # finding["related_files"] = []
+                results.append(finding)
+            continue
+
+        representative = cluster_findings[0]
+
+        # representative["duplicate_count"] = len(cluster_findings)
+        # representative["related_files"] = related_files
+
+        results.append(representative)
+
+    return results
