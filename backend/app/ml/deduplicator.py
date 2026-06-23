@@ -2,8 +2,11 @@ from collections import defaultdict
 
 from sklearn.cluster import DBSCAN
 
+from app.ml.embedder import embed_findings
+
+
 def get_model():
-        return None
+    return None
 
 
 try:
