@@ -617,14 +617,7 @@ async def get_baseline_findings(job_id: str):
         )
         rows = await cursor.fetchall()
 
-        return {
-            (
-                row[0],
-                row[1],
-                row[2],
-            )
-            for row in rows
-        }
+        return {(row[0], row[1]) for row in rows}
     finally:
         await db.close()
 
