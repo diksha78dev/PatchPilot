@@ -32,6 +32,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.ml.deduplicator import SENTENCE_TRANSFORMERS_AVAILABLE, deduplicate
+from app.ml.fp_predictor import predictor
 from app.ml.ranker import load_ranker, scoring_function
 
 from .db import (
@@ -369,6 +370,30 @@ async def download_to_path(url: str, dest_path: Path, max_retries: int = 5) -> N
                 await asyncio.sleep((base_delay * (2**attempt)) + jitter)
 
 
+async def _apply_fp_predictor(findings: List[Finding]) -> None:
+    ml_input = []
+    for f in findings:
+        rule_id = (
+            (f.metadata or {}).get("check_id")
+            or (f.metadata or {}).get("rule")
+            or (f.metadata or {}).get("osv_id")
+            or f.title
+        )
+        ml_input.append(
+            {
+                "rule_id": rule_id,
+                "message": f.description or f.title,
+                "file_path": f.location.path if f.location else "",
+                "ml_score": getattr(f, "ml_score", 1.0),
+            }
+        )
+
+    adjusted_scores = await run_in_threadpool(predictor.adjust_scores, ml_input)
+
+    for f, new_score in zip(findings, adjusted_scores):
+        f.ml_score = new_score
+
+
 def _maybe_use_single_top_folder(repo_dir: Path) -> Path:
     """
     If the extracted folder contains exactly one top-level directory (typical GitHub ZIP),
@@ -428,6 +453,8 @@ async def _run_single_scan_task(
 
         if not disable_dedup and SENTENCE_TRANSFORMERS_AVAILABLE:
             findings = deduplicate(findings, epsilon)
+
+        await _apply_fp_predictor(findings)
 
         finding_count = len(findings)
 
@@ -1102,6 +1129,8 @@ async def _run_repo_scan_task(
 
             if not disable_dedup and SENTENCE_TRANSFORMERS_AVAILABLE:
                 findings = deduplicate(findings, epsilon)
+
+            await _apply_fp_predictor(findings)
 
             finding_count = len(findings)
 
