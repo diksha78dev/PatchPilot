@@ -386,19 +386,21 @@ async def download_to_path(
                         bytes_received = 0
                         chunk_size = 1024 * 1024
 
-                        with open(dest_path, "wb") as f:
-                            async for chunk in r.aiter_bytes(chunk_size=chunk_size):
-                                if cancel_event and cancel_event.is_set():
-                                    dest_path.unlink(missing_ok=True)
-                                    raise asyncio.CancelledError("Download aborted")
-                                bytes_received += len(chunk)
-                                if bytes_received > MAX_UPLOAD_SIZE:
-                                    dest_path.unlink(missing_ok=True)
-                                    raise HTTPException(
-                                        status_code=413,
-                                        detail=f"Remote repository exceeds the maximum limit of {MAX_UPLOAD_MB}MB.",
-                                    )
-                                f.write(chunk)
+                        try:
+                            with open(dest_path, "wb") as f:
+                                async for chunk in r.aiter_bytes(chunk_size=chunk_size):
+                                    if cancel_event and cancel_event.is_set():
+                                        raise asyncio.CancelledError("Download aborted")
+                                    bytes_received += len(chunk)
+                                    if bytes_received > MAX_UPLOAD_SIZE:
+                                        raise HTTPException(
+                                            status_code=413,
+                                            detail=f"Remote repository exceeds the maximum limit of {MAX_UPLOAD_MB}MB.",
+                                        )
+                                    f.write(chunk)
+                        except BaseException:
+                            dest_path.unlink(missing_ok=True)
+                            raise
                         return
 
                 if status_code_for_retry in (403, 429):
@@ -1276,14 +1278,7 @@ async def _run_repo_scan_task(
                 await db.close()
         except asyncio.CancelledError:
             logger.info("Scan task %s was aborted", job_id)
-            db = await get_db()
-            try:
-                await db.execute(
-                    "UPDATE jobs SET status = 'aborted' WHERE job_id = ?", (job_id,)
-                )
-                await db.commit()
-            finally:
-                await db.close()
+            # No database write here
         except Exception:
             logger.exception("Failed repo scan task for job %s", job_id)
             db = await get_db()
@@ -1357,6 +1352,16 @@ async def _run_org_batch(org_job_id: str, repos: List[dict]):
                 if not t.done():
                     t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
+            
+            db = await get_db()
+            try:
+                await db.execute(
+                    "UPDATE jobs SET status = 'aborted' WHERE org_job_id = ? AND status NOT IN ('completed', 'failed')",
+                    (org_job_id,),
+                )
+                await db.commit()
+            finally:
+                await db.close()
         else:
             cancel_task.cancel()
     finally:
