@@ -1,14 +1,13 @@
-import { useState } from "react";
 import { Link, useLocation } from "react-router";
 import { Moon, Sun, Sparkles } from "lucide-react";
 import { Button } from "./ui/button";
 import { useTheme } from "./theme-provider";
 import { cn } from "./ui/utils";
 import { useOllamaStatus } from "../hooks/useOllamaStatus";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./ui/tooltip";
 
 function OllamaStatusIndicator() {
   const { status, loading } = useOllamaStatus();
-  const [showTooltip, setShowTooltip] = useState(false);
 
   if (loading) return null;
 
@@ -18,36 +17,30 @@ function OllamaStatusIndicator() {
     : "Ollama not running. Install Ollama and run: `ollama pull qwen2.5-coder:7b` to enable AI patches.";
 
   return (
-    <div 
-      className="group relative flex items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-sm font-medium hover:bg-muted cursor-help transition-colors"
-      onClick={() => setShowTooltip(!showTooltip)}
-      onMouseEnter={() => setShowTooltip(true)}
-      onMouseLeave={() => setShowTooltip(false)}
-    >
-      <div className="relative flex h-2.5 w-2.5 items-center justify-center">
-        {isConnected ? (
-          <>
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-20"></span>
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
-          </>
-        ) : (
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive"></span>
-        )}
-      </div>
-      <span className={isConnected ? "text-foreground" : "text-muted-foreground"}>
-        {isConnected ? "Ollama Connected" : "Ollama Offline"}
-      </span>
-
-      {/* Hover/Click Tooltip */}
-      <div 
-        className={cn(
-          "pointer-events-none absolute -bottom-2 right-0 translate-y-full w-64 rounded-md border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md transition-opacity z-50",
-          showTooltip ? "opacity-100" : "opacity-0"
-        )}
-      >
-        {tooltipText}
-      </div>
-    </div>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button className="flex items-center gap-2 rounded-full border border-border bg-muted/50 px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <div className="relative flex h-2.5 w-2.5 items-center justify-center">
+              {isConnected ? (
+                <>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-20"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span>
+                </>
+              ) : (
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive"></span>
+              )}
+            </div>
+            <span className={isConnected ? "text-foreground" : "text-muted-foreground"}>
+              {isConnected ? "Ollama Connected" : "Ollama Offline"}
+            </span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="w-64 z-50">
+          {tooltipText}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

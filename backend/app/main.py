@@ -161,7 +161,7 @@ async def ollama_health():
                     "models": [],
                     "base_url": base_url,
                 }
-    except (httpx.RequestError, ValueError) as e:
+    except (httpx.RequestError, ValueError, AttributeError, TypeError) as e:
         logger.warning(f"Ollama health check failed: {e}")
         return {
             "available": False,
