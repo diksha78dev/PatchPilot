@@ -1352,7 +1352,7 @@ async def _run_org_batch(org_job_id: str, repos: List[dict]):
                 if not t.done():
                     t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             db = await get_db()
             try:
                 await db.execute(
